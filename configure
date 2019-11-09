@@ -1,0 +1,588 @@
+#!/bin/sh
+# configure :: generate suitable Makefile 
+# 	(C) Dark Software
+# 	http://s.dark-x.net/
+SELF=`readlink -f ${BASH_SOURCE:-$0}`;
+sRoot=${SELF%/*};
+cRoot=${PWD};
+OFS=${IFS};
+N=/dev/null
+
+
+echo_extra_help(){
+	local S=${*};
+	if [ "${S:0:1}" = "\"" ]; then
+		S=${S:1};
+		S=${S%\"};
+	fi
+	[ "${S}" != "" ] && echo "				${S}"
+}
+
+help_config_h_common(){
+	local K=${1};
+	local D=${2};
+	local V=${3};
+	local TAB=$'\n\t\t\t\t';
+
+	if [ "${D:0:1}" = "\"" ]; then
+		D=${D:1};
+		D=${D%\"};
+	fi
+
+	[ "${K:23:1}" = "" ] && TAB="	";
+	[ "${K:15:1}" = "" ] && TAB="		";
+	[ "${K:7:1}" = "" ] && TAB="			";
+	echo "	${K}${TAB}${D} [${V}]"
+	echo_extra_help ${4}
+	echo_extra_help ${5}
+	echo_extra_help ${6}
+	echo_extra_help ${7}
+	echo_extra_help ${8}
+	echo_extra_help ${9}
+
+}
+
+help_config_h_bool(){
+	local MODE=${1};
+	local FILE=${2};
+	local IFS=$'\r\n';
+
+	local V;
+	case ${MODE} in
+		enable ) V="disabled";;
+		disable ) V="enabled";;
+	esac
+
+	for l in `cat ${sRoot}/${FILE:-config.h.in}`; do
+		IFS=$'\t';
+		set -- ${l}
+		if [ "${1}" = "#${MODE}" ]; then
+			help_config_h_common "--${MODE}-${3//\"/}" "${4}" "${V}" ${5} ${6} ${7} ${8} ${9};
+		fi
+	done
+}
+
+help_config_h_cfg(){
+	local FILE=${1};
+	local IFS=$'\r\n';
+
+	local V;
+	for l in `cat ${sRoot}/${FILE:-config.h.in}`; do
+		IFS=$'\t';
+		set -- ${l}
+		if [ "${1:0:4}" = "#cfg" ]; then
+			case ${1:4} in
+				str ) V="\"STR\"";;
+				int ) V="N";;
+			esac
+
+			help_config_h_common "--cfg-${4//\"/}=${V}" "${5}" "${3}" ${6} ${7} ${8} ${9};
+		fi
+	done
+}
+
+
+show_help(){
+cat <<"EOF"
+:
+: configure :: generate suitable Makefile 
+: 	(C) Dark Software
+: 	http://s.dark-x.net/
+:
+
+EOF
+
+echo "Usage: ${0} [Option] ... [Key=Value] ..."
+
+cat <<"EOF"
+
+Note:
+	Default values for the options are written in brackets.
+
+Configure options:
+	-h, --help		Show this help
+
+Compile options:
+	--build=BUILD		'make' will run on BUILD.
+	--host=HOST		Built programs will run on HOST.
+	--target=TARGET		Built programs will output data for TARGET.
+
+Install options:
+	--prefix=PREFIX		install root directory [/usr/local]
+	--exec-prefix=EPREFIX	install architecture dependent files [PREFIX]
+
+Detailed install directory options:
+	--bin-dir=DIR		user executables [EPREFIX/bin]
+	--sbin-dir=DIR		system executables [EPREFIX/sbin]
+	--libexec-dir=DIR	program executables [EPREFIX/libexec]
+	--lib-dir=DIR		libraries [EPREFIX/lib]
+
+	--include-dir=DIR	C header files [PREFIX/include]
+	--etc-dir=DIR		config (Read only) [PREFIX/etc]
+	--var-dir=DIR		config (Read / Write) [PREFIX/var]
+	--share-dir=DIR		datas for programs (Read only) [PREFIX/share]
+	--info-dir=DIR		info documentation [SHAREDIR/info]
+	--locale-dir=DIR	locale support files [SHAREDIR/locale]
+
+	--man-dir=DIR		man document [SHAREDIR/man]
+	--doc-dir=DIR		document root [SHAREDIR/doc]
+	--doc-html-dir=DIR	html format document [DOCDIR]
+	--doc-pdf-dir=DIR	pdf format document [DOCDIR]
+
+Supported optional features:
+EOF
+	help_config_h_bool enable;
+	help_config_h_bool disable;
+cat <<"EOF"
+
+Supported optional configurations:
+EOF
+	help_config_h_cfg;
+cat <<"EOF"
+
+Environment key/values for HOST:
+	CC		C compiler
+	CFLAGS		C compiler options
+	CPPFLAGS	C/C++ preprocessor options
+	LDFLAGS		linker options
+
+	LIBS		linker options (To add libraries will include)
+
+	CXX		C++ compiler
+	CXXFLAGS	C++ compiler options
+
+	AR		ar program (ARFLAGS to set options)
+	AS		as program (ASFLAGS to set options)
+	LD		ld program
+	RANLIB		ranlib program (RANLIBFLAGS to set options)
+	STRIP		strip program (STRIPFLAGS to set options)
+	READELF		readelf program (READELFFLAGS to set options)
+
+* If want to set these values for BUILD,
+  put prefix 'BUILD_' each environment keys.
+  Examples:
+	BUILD_CC=cc
+	BUILD_CFLAGS=-O2
+	BUILD_STRIPFLAGS=-d
+
+EOF
+}
+
+##### Check running environment
+test_env(){
+	local TEST="newroot";
+	local IFS=$'\n\r\t';
+	set -- ${TEST}
+	IFS=${OFS};
+	[ "${TEST}" = "${1}" ] && return 0;
+	return 1;
+}
+if [ "${1}" = "/Test" ]; then
+	test_env;
+	exit ${?};
+fi
+search_sh(){
+	SH=`type -p ${1}`;
+	${SH} ${SELF} /Test
+	[ "${?}" = "0" ] && return 0;
+	SH=`type ${1}`;
+	SH=/${SH#*/};
+	${SH} ${SELF} /Test
+	[ "${?}" = "0" ] && return 0;
+	SH=`which ${1}`;
+	${SH} ${SELF} /Test
+	[ "${?}" = "0" ] && return 0;
+	SH="";
+	return 1;
+}
+detect_sh(){
+	SH=${SHELL};
+	${SH} ${SELF} /Test;
+	[ "${?}" = "0" ] && return 0;
+	search_sh "bash" 2>${N}
+	[ "${?}" = "0" ] && return 0;
+	search_sh "ash" 2>${N}
+	[ "${?}" = "0" ] && return 0;
+	search_sh "desh" 2>${N}
+	[ "${?}" = "0" ] && return 0;
+	search_sh "sh" 2>${N}
+	[ "${?}" = "0" ] && return 0;
+	search_sh "zsh" 2>${N}
+	[ "${?}" = "0" ] && return 0;
+	search_sh "dash" 2>${N}
+	[ "${?}" = "0" ] && return 0;
+	SH="";
+	return 1;
+}
+test_env;
+if [ ! "${?}" = "0" ]; then
+	detect_sh;
+	[ ! "${SH}" = "" ] && exec ${SH} ${0} ${*}
+	echo "E: Current 'sh' is not supported."
+	exit 1;
+fi
+##### Main
+parse_args(){
+	local A KEY VAL OPT_TARGET;
+	local IFS=${OFS};
+	OPT_ARGS=${*};
+	for A in ${OPT_ARGS}; do
+		IFS=${OFS};
+		if [ "${A:0:2}" = "--" ]; then
+			IFS=$'=';
+			set -- ${A:2}
+			KEY=${1};shift;VAL=${*};
+			eval OPT_L_${KEY//-/_}="${VAL:--}";
+			continue
+		fi
+		if [ "${A:0:1}" = "/" ]; then
+			IFS=$':';
+			set -- ${A:1}
+			KEY=${1};shift;VAL=${*};
+			eval OPT_L_${KEY//-/_}="${VAL:--}";
+			if [ "${VAL}" = "" ]; then
+				[ "${OPT_TARGET}" = "" ] && OPT_TARGET="${KEY}";
+			fi
+			continue
+		fi
+		if [ "${A:0:1}" = "-" ]; then
+			eval OPT_N_${A:1:1}="${A:2}";
+			IFS=$'=';
+			set -- ${A:1}
+			KEY=${1};shift;VAL=${*};
+			eval OPT_S_${KEY//-/_}="${VAL:--}";
+			continue
+		fi
+		IFS=$'=';
+		set -- ${A}
+		KEY=${1};shift;VAL=${*};
+		if [ "${1}" = "" ]; then
+			if [ "${TARGET}" = "" ]; then
+				TARGET=${KEY};
+				continue;
+			fi
+		fi
+		eval VAL_${KEY//-/_}="${VAL:--}";
+		continue;
+	done
+	[ "${TARGET}" = "" ] && TARGET="${OPT_TARGET}";
+}
+
+test_prg(){
+	TESTED_PRGS=${1};
+	echo "I:   ${1} ..."
+	${1} --help >/dev/null 2>/dev/null
+	[ "${?}" = "127" ] && return 127;
+	return 0;
+}
+detect_cc(){ # prefix, override
+
+	echo "I:  C compiler:"
+	if [ ! "${2}" = "" ]; then
+		test_prg ${2}
+		return ${?};
+	fi
+
+	test_prg ${1}cl.exe
+	[ "${?}" = "0" ] && return 0;
+
+	test_prg ${1}clang
+	[ "${?}" = "0" ] && return 0;
+
+	test_prg ${1}cc
+	[ "${?}" = "0" ] && return 0;
+
+	test_prg ${1}gcc
+	[ "${?}" = "0" ] && return 0;
+
+	return 127;
+}
+
+detect_ld(){ # prefix, override
+
+	echo "I:  linker:"
+	if [ ! "${2}" = "" ]; then
+		test_prg ${2}
+		return ${?};
+	fi
+
+	test_prg ${1}link.exe
+	[ "${?}" = "0" ] && return 0;
+
+	test_prg ${1}lld
+	[ "${?}" = "0" ] && return 0;
+
+	test_prg ${1}ld
+	[ "${?}" = "0" ] && return 0;
+
+	test_prg ${1}gold
+	[ "${?}" = "0" ] && return 0;
+
+	return 127;
+}
+
+detect_cmd(){ # cmd, prefix, override
+
+	echo "I:  ${1}:"
+	if [ ! "${3}" = "" ]; then
+		test_prg ${3}
+		return ${?};
+	fi
+
+	test_prg ${2}${1}
+	[ "${?}" = "0" ] && return 0;
+
+	return 127;
+}
+
+check_installed(){
+	local PREFIX_VAL=${1};
+	local PREFIX_PRG=${2};
+
+	eval detect_cc \"${PREFIX_PRG}\" \"\${VAL_${PREFIX_VAL}CC}\"
+	if [ "${?}" = "127" ]; then
+		echo "E:  Not found. Please set ${PREFIX_VAL}CC= option."
+		return 127;
+	fi
+	eval ${PREFIX_VAL}CC=${TESTED_PRGS};
+
+	eval detect_ld \"${PREFIX_PRG}\" \"\${VAL_${PREFIX_VAL}LD}\"
+	if [ "${?}" = "127" ]; then
+		echo "E:  Not found. Please set ${PREFIX_VAL}LD= option."
+		return 127;
+	fi
+	eval ${PREFIX_VAL}LD=${TESTED_PRGS};
+
+	eval detect_cmd as \"${PREFIX_PRG}\" \"\${VAL_${PREFIX_VAL}AS}\"
+	if [ "${?}" = "127" ]; then
+		echo "E:  Not found. Please set ${PREFIX_VAL}AS= option."
+		return 127;
+	fi
+	eval ${PREFIX_VAL}AS=${TESTED_PRGS};
+
+	eval detect_cmd ar \"${PREFIX_PRG}\" \"\${VAL_${PREFIX_VAL}AR}\"
+	if [ "${?}" = "127" ]; then
+		echo "E:  Not found. Please set ${PREFIX_VAL}AR= option."
+		return 127;
+	fi
+	eval ${PREFIX_VAL}AR=${TESTED_PRGS};
+
+	eval detect_cmd ranlib \"${PREFIX_PRG}\" \"\${VAL_${PREFIX_VAL}RANLIB}\"
+	if [ "${?}" = "127" ]; then
+		echo "E:  Not found. Please set ${PREFIX_VAL}RANLIB= option."
+		return 127;
+	fi
+	eval ${PREFIX_VAL}RANLIB=${TESTED_PRGS};
+
+	eval detect_cmd strip \"${PREFIX_PRG}\" \"\${VAL_${PREFIX_VAL}STRIP}\"
+	if [ "${?}" = "127" ]; then
+		echo "E:  Not found. Please set ${PREFIX_VAL}STRIP= option."
+		return 127;
+	fi
+	eval ${PREFIX_VAL}STRIP=${TESTED_PRGS};
+}
+
+generate_makefile_tools(){
+	echo "# Build Tools"
+	echo "BUILD_CFLAGS:=${VAL_BUILD_CFLAGS:-${VAL_CFLAGS}}"
+	echo "BUILD_LDFLAGS:=${VAL_BUILD_LDFLAGS:-${VAL_LDFLAGS}}"
+	echo "BUILD_ASFLAGS:=${VAL_BUILD_ASFLAGS:-${VAL_ASFLAGS}}"
+	echo "BUILD_ARFLAGS:=${VAL_BUILD_ARFLAGS:-${VAL_ARFLAGS}}"
+	echo "BUILD_RANLIBFLAGS:=${VAL_BUILD_RANLIBFLAGS:-${VAL_RANLIBFLAGS}}"
+	echo "BUILD_STRIPFLAGS:=${VAL_BUILD_STRIPFLAGS:-${VAL_STRIPFLAGS}}"
+	echo "BUILD_LIBS:=${VAL_BUILD_LIBS:-${VAL_LIBS}}"
+
+	for E in `set`; do
+		if [ "${E:0:4}" = "VAL_" ]; then
+			[ "${E:4:1}" = "$" ] && continue
+			local IFS=$'=';
+			set -- ${E:4}
+			local K=${1}
+			shift
+			echo ${K}:=${*}
+		fi
+	done
+	IFS=${OFS};
+
+	echo "MROOT:=${sRoot}"
+	echo "CROOT:=${cRoot}"
+
+	echo 'SMAKE:=@$(MAKE) -f "$(SELF)"'
+	echo 'RULE:=$(firstword $(MAKECMDGOALS))'
+
+	echo "BUILD:=${OPT_L_build:-${BUILD_GUESS}}"
+	echo "HOST:=${OPT_L_host}"
+	echo "TARGET:=${OPT_L_target}"
+
+	echo CONFIG_ARGS:=\"${DESC_ARGS}\"
+
+	echo "CC:=${CC}"
+	echo "LD:=${LD}"
+	echo "AS:=${AS}"
+	echo "AR:=${AR}"
+	echo "RANLIB:=${RANLIB}"
+	echo "STRIP:=${STRIP}"
+
+	echo "BUILD_CC:=${BUILD_CC}"
+	echo "BUILD_LD:=${BUILD_LD}"
+	echo "BUILD_AS:=${BUILD_AS}"
+	echo "BUILD_AR:=${BUILD_AR}"
+	echo "BUILD_RANLIB:=${BUILD_RANLIB}"
+	echo "BUILD_STRIP:=${BUILD_STRIP}"
+
+}
+
+generate_makefile_dirs(){
+	echo "# Install directories:"
+	echo "prefix = ${OPT_L_prefix:-/usr/local}"
+	echo "exec_prefix = ${OPT_L_exec_prefix:-\${prefix}}"
+
+	echo "bindir = ${OPT_L_bin_dir:-\${exec_prefix\}/bin}"
+	echo "sbindir = ${OPT_L_sbin_dir:-\${exec_prefix\}/sbin}"
+	echo "libexecdir = ${OPT_L_libexec_dir:-\${exec_prefix\}/libexec}"
+	echo "libdir = ${OPT_L_lib_dir:-\${exec_prefix\}/lib}"
+
+	echo "includedir = ${OPT_L_include_dir:-\${prefix\}/include}"
+	echo "etcdir = ${OPT_L_etc_dir:-\${prefix\}/etc}"
+	echo "vardir = ${OPT_L_var_dir:-\${prefix\}/var}"
+
+	echo "sharedir = ${OPT_L_share_dir:-\${prefix\}/share}"
+	echo "infodir = ${OPT_L_info_dir:-\${sharedir\}/info}"
+	echo "localedir = ${OPT_L_locale_dir:-\${sharedir\}/locale}"
+
+	echo "mandir = ${OPT_L_man_dir:-\${sharedir\}/man}"
+	echo "docdir = ${OPT_L_doc_dir:-\${sharedir\}/doc}"
+	echo "dochtmldir = ${OPT_L_doc_html_dir:-\${docdir\}}"
+	echo "docpdfdir = ${OPT_L_doc_pdf_dir:-\${docdir\}}"
+}
+
+generate_config_h(){
+	echo "//This file is generated by configure."
+	echo "//If run configure again, this file will be overrided."
+	echo "#if !defined(CONFIG_H)"
+
+	local IN="${sRoot}/config.h.in";
+
+#	[ ! -e "${IN}" ] && return 0;
+
+	local K V;
+	local IFS=$'\r\n';
+	for l in `cat "${IN}"`; do
+		IFS=$'\t';
+		set -- ${l}
+		case ${1} in
+			"#enable" )
+				K=${3};
+				if [ "${K:0:1}" = "\"" ]; then
+					K=${K:1};
+					K=${K%\"};
+				fi
+				K=OPT_L_enable_${K//-/_};
+				eval V=\${${K}};
+				if [ "${V}" != "" ]; then
+					echo "#define ${2}"
+				else
+					echo "#undef ${2}"
+				fi;;
+
+			"#disable" )
+				K=${3};
+				if [ "${K:0:1}" = "\"" ]; then
+					K=${K:1};
+					K=${K%\"};
+				fi
+				K=OPT_L_disable_${K//-/_};
+				eval V=\${${K}};
+				if [ "${V}" = "" ]; then
+					echo "#define ${2}"
+				else
+					echo "#undef ${2}"
+				fi;;
+
+			"#cfgstr" )
+				K=${4};
+				if [ "${K:0:1}" = "\"" ]; then
+					K=${K:1};
+					K=${K%\"};
+				fi
+				K=OPT_L_cfg_${K//-/_};
+				eval V=\${${K}};
+				if [ "${V}" = "" ] || [ "${V}" = "-" ]; then
+					echo "#define ${2} ${3}"
+				else
+					echo "#define ${2} \"${V}\""
+				fi;;
+
+			"#cfgint" )
+				K=${4};
+				if [ "${K:0:1}" = "\"" ]; then
+					K=${K:1};
+					K=${K%\"};
+				fi
+				K=OPT_L_cfg_${K//-/_};
+				eval V=\${${K}};
+				if [ "${V}" = "" ] || [ "${V}" = "-" ]; then
+					echo "#define ${2} ${3}"
+				else
+					echo "#define ${2} $((V))"
+				fi;;
+
+			*) echo ${l};;
+		esac
+	done
+
+	echo "#endif"
+}
+
+config(){
+	echo "I: DES configure"
+	local DESC_ARGS=${*};
+	parse_args ${DESC_ARGS};
+
+	if [ "${OPT_L_help}${OPT_S_h}" = "-" ]; then
+		show_help;
+		exit 0;
+	fi
+
+	[ -f "${sRoot}/config.guess" ] && BUILD_GUESS=`${sRoot}/config.guess`
+
+	BUILD=${OPT_L_build:=${BUILD_GUESS}};
+	HOST=${OPT_L_host:=${BUILD}};
+	TARGET=${OPT_L_target:=${HOST}};
+
+	echo "I: Args		: ${DESC_ARGS}"
+	echo "I: Build	: ${BUILD}"
+	echo "I: Host		: ${HOST}"
+	echo "I: Target	: ${TARGET}"
+
+	if [ "${BUILD}" = "${BUILD_GUESS}" ]; then
+		BUILD='';
+		unset BUILD;
+	fi
+
+	echo "I: Checking install status of build tools in current machine."
+	check_installed "BUILD_" "${BUILD:+${BUILD}-}"
+	[ "${?}" = 127 ] && return 127;
+
+	echo "I: Checking install status of host tools for machine that runs the program."
+	check_installed "" "${HOST:+${HOST}-}"
+	[ "${?}" = 127 ] && return 127;
+
+	echo "I: All checks are passed."
+
+	local M=Makefile;
+	echo "# Makefile generated by DES configure" > ${M}
+	generate_makefile_tools >> ${M}
+	generate_makefile_dirs >> ${M}
+	echo "CONFIG=config.h" >> ${M}
+	cat ${sRoot}/Makefile.in >> ${M}
+
+	local C=config.h;
+	generate_config_h > ${C}
+
+	echo "I: Generated Makefile. Type 'make' to build."
+echo $OPT_L_cfg_dsloader
+}
+
+config ${*};
+

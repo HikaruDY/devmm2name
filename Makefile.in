@@ -1,0 +1,45 @@
+#////////////////////////////////////////////////////////////////////////////////
+#// DESL Makefile 
+#//	(C)2019 Dark Embedded Systems
+#//	http://e.dark-x.net/
+#//
+#// You can choose one of following licenses:
+#//	* Project Open License v1.0 or later
+#//	* Dark Embedded Systems License v1.0 or later
+#//	* Apache License Version 2.0 or later
+#//	* GNU General Public License, version 2 or later
+#////////////////////////////////////////////////////////////////////////////////
+MAIN_FILES	:= devmm2name
+SELF		:= $(abspath $(lastword $(MAKEFILE_LIST)))
+XROOT		:= $(MROOT)
+
+INCLUDES	= -I$(MROOT) -I$(CROOT) -I$(XROOT) -I$(XROOT)/Common -I$(XROOT)/OpenDF 
+
+.PHONY	: all install clean
+
+define make_cpp
+$(1).o: $(MROOT)/$(1).cpp $(CONFIG) 
+	@$(CC) $(CFLAGS) $(INCLUDES) -c "$(MROOT)/$(1).cpp" -o "$(1).o" -Wno-write-strings -Wno-format
+endef
+
+define make_o
+$(1): $(1).o
+	@$(CC) $(LDFLAGS) -static "$(1).o" -o "$(1)" $(LIBS)
+	@$(STRIP) -d $(STRIPFLAGS) "$(1)"
+endef
+
+
+all: $(MAIN_FILES);
+
+install:
+	@mkdir -p $(bindir)
+	@cp $(MAIN_FILES) "$(bindir)"
+
+clean:
+	rm -f *.obj *.lib *.exp *.pdb *.o *.so *.a *.la *.tmp
+	rm -f $(MAIN_FILES)
+
+
+$(foreach P, $(MAIN_FILES), $(eval $(call make_cpp,$(P))) )
+$(foreach P, $(MAIN_FILES), $(eval $(call make_o,$(P))) )
+

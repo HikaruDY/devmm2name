@@ -1,0 +1,28 @@
+# Generated files
+/devmm2name
+/Makefile
+
+# Extra files
+*.exe
+*.dll
+*.lib
+*.res
+*.obj
+*.pdb
+*.exp
+*.db
+*.cache
+
+*.out
+*.o
+*.so
+*.a
+*.la
+
+# Environment dependent files
+/Git.cmd
+
+
+
+
+
