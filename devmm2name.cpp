@@ -68,6 +68,22 @@ char** ReadDevMMTable(char Type, int Major){
 	return 0;
 }
 
+int MakeDir(const char* Path){
+	char D[512];
+	D[0] = Path[0]; //Skip to make '/'
+
+	for(int i=1; i<511; i++){ //1: '/'
+		D[i] = Path[i];
+		switch(Path[i]){
+			case 0x00: return 0;
+			case '/':
+				D[i+1] = 0x00;
+				mkdir(D, S_IRWXU | S_IRWXG | S_IROTH);
+				break;
+		}
+	}
+	return 0;
+}
 
 char* GetAutoRepeatableValue(char** Table, int MarkerPos, int ReadPos){
 	if(MarkerPos > (DEVMM_MAX_MINOR - DEVMM_MIN_PERMITTED_AUTOREPEAT)){fprintf(stderr, DEVMM_ERROR_INVALID_TABLE);return ((char*)BLANK_STR);}
@@ -212,8 +228,16 @@ int MknodEx(const char* result, char Type, int Major, int Minor, int OnlyUpdateI
 
 	R = unlink(result);
 	R = mknod(result, (S_IRUSR | S_IWUSR | mode), MKDEV(Major, Minor) );
-	if(R == -1){ fprintf(stderr, "E: Failed to create special file: %s\n", result); return 12; }
-	R = chmod(result, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IXOTH);
+	if(R == -1){
+		MakeDir(result);
+		R = mknod(result, (S_IRUSR | S_IWUSR | mode), MKDEV(Major, Minor) );
+		if(R == -1){
+			fprintf(stderr, "E: Failed to create special file: %s\n", result);
+			return 12;
+		}
+	}
+
+	R = chmod(result, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 	if(R == -1){ fprintf(stderr, "E: Failed to chmod special file: %s\n", result); return 13; }
 
 #endif
@@ -365,6 +389,4 @@ int main(int argc, char** argv){
 	ShowUsage(argv[0]);
 	return 1;
 }
-
-
 
